@@ -1,31 +1,62 @@
 import { getDb } from '@/lib/db';
 import Link from 'next/link';
 import { Sparkles, ArrowRight, Grid, Play, Heart, MapPin, Eye } from 'lucide-react';
+import fs from 'fs';
+import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
 export default function DemoPage() {
-  const db = getDb();
+  let people: any[] = [];
+  let featuredDate: any = null;
 
-  // Load all 25 demo people and their profile summaries
-  const people = db.prepare(`
-    SELECT p.id, p.slug, p.name, p.city, p.photo_url, p.linkedin_url, p.instagram_url, pr.summary, pr.data_quality
-    FROM people p
-    LEFT JOIN profiles pr ON p.id = pr.person_id
-    WHERE p.is_demo = 1
-    ORDER BY p.name ASC
-  `).all() as any[];
+  try {
+    const db = getDb();
+    // Load all 25 demo people and their profile summaries
+    people = db.prepare(`
+      SELECT p.id, p.slug, p.name, p.city, p.photo_url, p.linkedin_url, p.instagram_url, pr.summary, pr.data_quality
+      FROM people p
+      LEFT JOIN profiles pr ON p.id = pr.person_id
+      WHERE p.is_demo = 1
+      ORDER BY p.name ASC
+    `).all() as any[];
 
-  // Find a featured date (e.g. highest chemistry date between top profiles)
-  const featuredDate = db.prepare(`
-    SELECT d.id, d.venue, d.verdict_a, d.verdict_b, 
-           pA.name as name_a, pA.slug as slug_a, pA.photo_url as photo_a,
-           pB.name as name_b, pB.slug as slug_b, pB.photo_url as photo_b
-    FROM dates d
-    JOIN people pA ON d.a_id = pA.id
-    JOIN people pB ON d.b_id = pB.id
-    LIMIT 1
-  `).get() as any;
+    // Find a featured date
+    featuredDate = db.prepare(`
+      SELECT d.id, d.venue, d.verdict_a, d.verdict_b, 
+             pA.name as name_a, pA.slug as slug_a, pA.photo_url as photo_a,
+             pB.name as name_b, pB.slug as slug_b, pB.photo_url as photo_b
+      FROM dates d
+      JOIN people pA ON d.a_id = pA.id
+      JOIN people pB ON d.b_id = pB.id
+      LIMIT 1
+    `).get() as any;
+  } catch (err) {
+    console.error('Demo page DB query error:', err);
+  }
+
+  // Resilient fallback: If database is empty or uninitialized on first deployment, load from data/seed.json
+  if (!people || people.length === 0) {
+    try {
+      const seedFile = path.join(process.cwd(), 'data', 'seed.json');
+      if (fs.existsSync(seedFile)) {
+        const seedData = JSON.parse(fs.readFileSync(seedFile, 'utf-8'));
+        people = seedData.map((s: any) => ({
+          id: s.id,
+          slug: s.slug,
+          name: s.name,
+          city: s.city,
+          photo_url: s.photo_url,
+          linkedin_url: s.linkedin_url,
+          instagram_url: s.instagram_url,
+          summary: s.consent_note || 'Active candidate in the autonomous swarm cohort.',
+          data_quality: 'rich',
+        }));
+      }
+    } catch (fallbackErr) {
+      console.error('Demo page seed fallback error:', fallbackErr);
+    }
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

@@ -30,6 +30,7 @@ data/dating.db-wal
 data/dating.db-shm
 data/dating.db-journal
 *.sqlite
+!data/seed.sqlite
 *.sqlite-wal
 *.sqlite-shm
 

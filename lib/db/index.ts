@@ -2,21 +2,77 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
-const DB_PATH = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'dating.db');
+function getDbPath(): string {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
 
-// Ensure parent directory exists
-const dbDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT
+  );
+
+  if (isServerless) {
+    const tmpDbPath = path.join('/tmp', 'dating.db');
+    if (!fs.existsSync(tmpDbPath)) {
+      const candidates = [
+        path.join(process.cwd(), 'data', 'seed.sqlite'),
+        path.join(process.cwd(), 'data', 'dating.db'),
+      ];
+      for (const cand of candidates) {
+        if (fs.existsSync(cand)) {
+          try {
+            fs.copyFileSync(cand, tmpDbPath);
+            break;
+          } catch (e) {
+            console.warn('Failed to copy seed db to /tmp:', e);
+          }
+        }
+      }
+    }
+    return tmpDbPath;
+  }
+
+  const localPath = path.join(process.cwd(), 'data', 'dating.db');
+  const dbDir = path.dirname(localPath);
+  if (!fs.existsSync(dbDir)) {
+    try {
+      fs.mkdirSync(dbDir, { recursive: true });
+    } catch {}
+  }
+
+  if (!fs.existsSync(localPath)) {
+    const seedPath = path.join(process.cwd(), 'data', 'seed.sqlite');
+    if (fs.existsSync(seedPath)) {
+      try {
+        fs.copyFileSync(seedPath, localPath);
+      } catch {}
+    }
+  }
+
+  return localPath;
 }
 
 let dbInstance: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!dbInstance) {
-    dbInstance = new Database(DB_PATH);
-    dbInstance.pragma('journal_mode = WAL');
-    initSchema(dbInstance);
+    const dbPath = getDbPath();
+    try {
+      dbInstance = new Database(dbPath);
+      try {
+        dbInstance.pragma('journal_mode = WAL');
+      } catch {}
+      initSchema(dbInstance);
+    } catch (err) {
+      console.error(`Failed to open SQLite database at ${dbPath}:`, err);
+      try {
+        dbInstance = new Database(':memory:');
+        initSchema(dbInstance);
+      } catch (memErr) {
+        console.error('Failed to create in-memory database:', memErr);
+        throw err;
+      }
+    }
   }
   return dbInstance;
 }
