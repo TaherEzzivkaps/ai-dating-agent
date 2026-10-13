@@ -52,6 +52,58 @@ function getDbPath(): string {
   return localPath;
 }
 
+import initialData from '@/data/initial-data.json';
+
+function autoSeedIfEmpty(db: Database.Database) {
+  try {
+    const row = db.prepare('SELECT count(*) as c FROM people').get() as any;
+    if (row && row.c >= 25) {
+      return;
+    }
+  } catch {
+    // Schema might not exist, handled below
+  }
+
+  try {
+    const insertPerson = db.prepare(`
+      INSERT OR REPLACE INTO people (id, slug, name, linkedin_url, instagram_url, photo_url, city, raw_linkedin, raw_instagram, images, identity_check, interested_in, is_demo, created_at)
+      VALUES (@id, @slug, @name, @linkedin_url, @instagram_url, @photo_url, @city, @raw_linkedin, @raw_instagram, @images, @identity_check, @interested_in, @is_demo, @created_at)
+    `);
+
+    const insertProfile = db.prepare(`
+      INSERT OR REPLACE INTO profiles (person_id, summary, needs, hobbies, interests, values_json, personality, lifestyle, communication_style, relationship_signals, friction_points, dating_persona, overall_confidence, data_quality, created_at)
+      VALUES (@person_id, @summary, @needs, @hobbies, @interests, @values_json, @personality, @lifestyle, @communication_style, @relationship_signals, @friction_points, @dating_persona, @overall_confidence, @data_quality, @created_at)
+    `);
+
+    const insertScreen = db.prepare(`
+      INSERT OR REPLACE INTO screens (a_id, b_id, score, shared, tension, rationale)
+      VALUES (@a_id, @b_id, @score, @shared, @tension, @rationale)
+    `);
+
+    const insertDate = db.prepare(`
+      INSERT OR REPLACE INTO dates (id, a_id, b_id, venue, transcript, verdict_a, verdict_b, status, created_at)
+      VALUES (@id, @a_id, @b_id, @venue, @transcript, @verdict_a, @verdict_b, @status, @created_at)
+    `);
+
+    const insertRanking = db.prepare(`
+      INSERT OR REPLACE INTO rankings (person_id, candidate_id, rank, score, why_fits, watch_out, sources)
+      VALUES (@person_id, @candidate_id, @rank, @score, @why_fits, @watch_out, @sources)
+    `);
+
+    const seedTransaction = db.transaction(() => {
+      for (const p of (initialData as any).people || []) insertPerson.run(p);
+      for (const pr of (initialData as any).profiles || []) insertProfile.run(pr);
+      for (const s of (initialData as any).screens || []) insertScreen.run(s);
+      for (const d of (initialData as any).dates || []) insertDate.run(d);
+      for (const r of (initialData as any).rankings || []) insertRanking.run(r);
+    });
+
+    seedTransaction();
+  } catch (seedErr) {
+    console.error('Failed to auto-seed database:', seedErr);
+  }
+}
+
 let dbInstance: Database.Database | null = null;
 
 export function getDb(): Database.Database {
@@ -63,16 +115,22 @@ export function getDb(): Database.Database {
         dbInstance.pragma('journal_mode = WAL');
       } catch {}
       initSchema(dbInstance);
+      autoSeedIfEmpty(dbInstance);
     } catch (err) {
       console.error(`Failed to open SQLite database at ${dbPath}:`, err);
       try {
         dbInstance = new Database(':memory:');
         initSchema(dbInstance);
+        autoSeedIfEmpty(dbInstance);
       } catch (memErr) {
         console.error('Failed to create in-memory database:', memErr);
         throw err;
       }
     }
+  } else {
+    try {
+      autoSeedIfEmpty(dbInstance);
+    } catch {}
   }
   return dbInstance;
 }

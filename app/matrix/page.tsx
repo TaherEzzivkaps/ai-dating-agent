@@ -5,16 +5,18 @@ import { Sparkles, ArrowRight, Grid, Play } from 'lucide-react';
 export const dynamic = 'force-dynamic';
 
 export default function MatrixPage() {
-  const db = getDb();
+  let people: any[] = [];
+  let screens: any[] = [];
+  let dates: any[] = [];
 
-  // Load all 25 demo candidates
-  const people = db.prepare('SELECT id, slug, name, photo_url FROM people WHERE is_demo = 1 ORDER BY name ASC').all() as any[];
-
-  // Load all screens
-  const screens = db.prepare('SELECT a_id, b_id, score FROM screens').all() as any[];
-
-  // Load all dates
-  const dates = db.prepare('SELECT id, a_id, b_id FROM dates').all() as any[];
+  try {
+    const db = getDb();
+    people = db.prepare('SELECT id, slug, name, photo_url FROM people WHERE is_demo = 1 ORDER BY name ASC').all() as any[];
+    screens = db.prepare('SELECT a_id, b_id, score FROM screens').all() as any[];
+    dates = db.prepare('SELECT id, a_id, b_id FROM dates').all() as any[];
+  } catch (err) {
+    console.error('Matrix DB error:', err);
+  }
 
   // Map scores and dates
   const scoreMap = new Map<string, number>();

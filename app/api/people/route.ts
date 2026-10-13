@@ -4,6 +4,22 @@ import { normalizeLinkedInUrl, normalizeInstagramUrl, extractSlugFromUrls } from
 import { runFullPipelineForPerson } from '@/lib/jobs';
 import crypto from 'crypto';
 
+export async function GET() {
+  try {
+    const db = getDb();
+    const people = db.prepare(`
+      SELECT p.id, p.slug, p.name, p.city, p.photo_url, p.linkedin_url, p.instagram_url, p.is_demo, pr.summary, pr.data_quality
+      FROM people p
+      LEFT JOIN profiles pr ON p.id = pr.person_id
+      ORDER BY p.name ASC
+    `).all();
+
+    return NextResponse.json({ people });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
